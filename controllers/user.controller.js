@@ -25,7 +25,8 @@ const genrateAccessAndRefreshToken = async (userId) => {
 
 const options = {
     httpOnly: true,
-    // secure: true, // Remove or comment out this line for local development
+    secure: true,
+    sameSite: 'None' 
     
 };
 
