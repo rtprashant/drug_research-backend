@@ -25,6 +25,12 @@ const moleculeGenrationSchema = new Schema({
         type : String,
         required : true
     },
+    propertyToOptimize :{
+        type : String ,
+        required : true,
+        enum : ["QED" ,"plogP"]
+
+    },
     genratedModel :[
         {
             structure: { type: String, required: true },

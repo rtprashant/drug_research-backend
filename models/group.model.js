@@ -7,8 +7,7 @@ const messageSchema = new Schema ({
         required: true
     },
     sender :{
-        type : Schema.Types.ObjectId,
-        ref: 'User',
+        type : String
     },
     deliveredAt :{
         type : Date ,
@@ -17,12 +16,12 @@ const messageSchema = new Schema ({
 },{
     timestamps:true
 })
-const Message = mongoose.model("Message" , messageSchema);
+export const  Message = mongoose.model("Message" , messageSchema);
 const groupSchema = new Schema({
     groupName:{
         type : String,
         required : true,
-        unique : true,
+        unique : true
     },
     createdBy : {
         type : Schema.Types.ObjectId,
@@ -65,7 +64,7 @@ groupSchema.methods.addGroupMembers = async function(userId){
     return null ;
 }
 groupSchema.methods.removeGroupMember = async function(userId){
-    intialLength = this.members.length ;
+    let intialLength = this.members.length ;
     this.members.pull(userId);
     if(intialLength !== this.members.length){
         return await this.save()

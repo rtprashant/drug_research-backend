@@ -9,7 +9,6 @@ const moleculeBankSchema = new Schema({
     },
     smileString :{
         type: String,
-        unique : true,
         required: true
     },
     molecularWeight :{

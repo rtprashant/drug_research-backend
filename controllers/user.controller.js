@@ -5,6 +5,8 @@ import { User } from "../models/user.model.js"
 import cloudinaryUpload from '../utils/cloudinary.js'
 import sendMail from "../utils/sendMail.js"
 import jwt from "jsonwebtoken"
+import { totp } from "otplib"
+import token from "../utils/otp.js"
 
 const genrateAccessAndRefreshToken = async (userId) => {
     try {
@@ -26,8 +28,8 @@ const genrateAccessAndRefreshToken = async (userId) => {
 const options = {
     httpOnly: true,
     secure: true,
-    sameSite: 'None' 
-    
+    sameSite: 'None'
+
 };
 
 const registerUser = asyncHandler(async (req, res) => {
@@ -48,8 +50,6 @@ const registerUser = asyncHandler(async (req, res) => {
             )
         }
         const profileImageLocalPath = req.file?.path
-        console.log(profileImageLocalPath);
-
         if (!profileImageLocalPath) {
             throw new apiError(
                 400,
@@ -63,8 +63,6 @@ const registerUser = asyncHandler(async (req, res) => {
                 "Profile Image Is Required"
             )
         }
-
-
         const user = await User.create({
             fullName,
             userName,
@@ -74,41 +72,12 @@ const registerUser = asyncHandler(async (req, res) => {
             role,
             bio: bio || "",
             isEmailVerified: false,
-
-
         })
-
-
-
         const createdUser = await User.findById(user._id).select("-password  -refreshToken")
         if (!createdUser) {
             throw new apiError(
                 500,
                 "failed to create a user"
-            )
-        }
-        const mailVerificationToken = jwt.sign(
-            {
-
-                email
-            },
-
-            process.env.MAIL_VERIFICATION_SECRET,
-            {
-                expiresIn: process.env.MAIL_VERIFICATION_EXPIRY,
-            }
-        )
-        if (!mailVerificationToken) {
-            throw new apiError(400,
-                "failed to genrate email verification token"
-            )
-        }
-        try {
-            await sendMail("Verify your mail", mailVerificationToken, email)
-        } catch (error) {
-            throw new apiError(
-                400,
-                "failed to send email verification token"
             )
         }
         return res
@@ -119,7 +88,7 @@ const registerUser = asyncHandler(async (req, res) => {
     } catch (error) {
         if (error instanceof apiError) {
             return res.status(error.statusCode)
-            .json(new apiResponse(error.statusCode, error.message, error.description))
+                .json(new apiResponse(error.statusCode, error.message, error.description))
 
         }
 
@@ -159,8 +128,6 @@ const loginUser = asyncHandler(async (req, res) => {
             )
         }
         const { accessToken, refreshToken } = await genrateAccessAndRefreshToken(user._id)
-        console.log(accessToken)
-        console.log(refreshToken);
         const loggedInUser = await User.findById(user._id).select("-password  -refreshToken")
         return res
             .cookie("accessToken", accessToken, options)
@@ -173,58 +140,72 @@ const loginUser = asyncHandler(async (req, res) => {
                         user: loggedInUser, accessToken, refreshToken
                     },
                     "user login successfull"
-    
+
                 )
             )
     } catch (error) {
-        if(error instanceof apiError){
-           
+        if (error instanceof apiError) {
+
             return res.status(error.statusCode)
-            .json(new apiResponse(error.statusCode, error.message, error.description))
+                .json(new apiResponse(error.statusCode, error.message, error.description))
         }
-        
+
     }
 })
-
-const verifyMail = asyncHandler(async (req, res) => {
-    const { mailVerificationToken } = req.body
-    if (!mailVerificationToken) {
-        throw new apiError(
-            400,
-            "Unauthorized Request"
-        )
+const sendOtp = asyncHandler(async (req , res)=>{
+    const user = req.user
+    const secret = process.env.OTP_SECRET + user.email
+    totp.options = { step: 15*60 };
+    const otp = totp.generate(secret)
+    console.log(otp);
+    
+    const subject = "please verify your mail "
+    const message = `Your OTP is ${otp} . Only Valid For Next 15 min `
+    const receiverMail = user.email
+    console.log(receiverMail);
+    
+    const sendOtp =  sendMail(subject, message, receiverMail)
+    if (!sendOtp) {
+        throw new apiError(500, "Failed to send OTP")
     }
-    const decodeMailVerificationToken = jwt.verify(mailVerificationToken, process.env.MAIL_VERIFICATION_SECRET)
-    console.log(decodeMailVerificationToken);
-
-    if (!decodeMailVerificationToken) {
-        throw new apiError(
-            400,
-            "Invalid Mail Verification Token"
-        )
-    }
-    const user = await User.findOne({ email: decodeMailVerificationToken.email })
-    if (!user) {
-        throw new apiError(
-            400,
-            "User Not Found"
-        )
-    }
-    console.log(user);
-
-    user.isEmailVerified = true
-    await user.save(
-        { validateBeforeSave: false }
-    )
     return res
-        .status(200)
-        .json(
-            new apiResponse(
-                200,
-                user,
-                "User Email Verified"
-            )
-        )
+    .status(200)
+    .json(
+        new apiResponse(200, message, "OTP sent successfully")
+    )
+
+})
+const verifyMail = asyncHandler(async (req, res) => {
+    const { otp } = req.body
+    const user = req.user
+    const verify = totp.verify({
+        token: otp,
+        secret: process.env.OTP_SECRET+  user.email
+    })
+    if (!verify) {
+        throw new apiError(401, "Invalid OTP")
+    }
+    const userUpdate = await User.findByIdAndUpdate(
+        user._id,
+        {
+            $set: {
+                isEmailVerified: true
+
+            }
+            
+        },
+        {
+            new: true
+        }
+    ).select("-password -refreshToken")
+    return res
+    .status(200)
+    .json(
+        new apiResponse(200,
+            userUpdate,
+             "Email verified successfully", )
+    )
+
 })
 
 const logoutUser = asyncHandler(async (req, res) => {
@@ -266,22 +247,44 @@ const getUser = asyncHandler(async (req, res) => {
         )
 })
 const changePassword = asyncHandler(async (req, res) => {
-    const { newPassword } = req.body
+    const { newPassword, reenterNewPassword } = req.body
     const user = req.user
-    user.password = newPassword
-    await user.save({
-        validateBeforeSave: false
-    })
-    res
-        .status(201)
-        .json(
-            new apiResponse(
-                200,
-                {},
-                "password changed successfully"
-
+    try {
+        if (!newPassword || !reenterNewPassword) {
+            throw new apiError(
+                400,
+                "Credentials Required"
             )
-        )
+        }
+        if (newPassword !== reenterNewPassword) {
+            throw new apiError(
+                400,
+                "Password do not match",
+            )
+        }
+        user.password = newPassword
+        await user.save({
+            validateBeforeSave: false
+        })
+        res
+            .status(201)
+            .json(
+                new apiResponse(
+                    200,
+                    {},
+                    "password changed successfully"
+
+                )
+            )
+    } catch (error) {
+        if (error instanceof apiError) {
+
+            return res.status(error.statusCode)
+                .json(new apiResponse(error.statusCode, error.message, error.description))
+        }
+
+
+    }
 })
 
 const changeProfileImage = asyncHandler(async (req, res) => {
@@ -310,7 +313,7 @@ const changeProfileImage = asyncHandler(async (req, res) => {
         .json(
             new apiResponse(
                 200,
-                { profileImage: updatedProfileImage.url },
+                user,
                 "Profile Image Updated Successfully"
             )
         )
@@ -318,42 +321,50 @@ const changeProfileImage = asyncHandler(async (req, res) => {
 
 const chnageUserDetails = asyncHandler(async (req, res) => {
     const { fullName, email, userName, bio } = req.body
-    const existedDetails = await User.findOne(
-        {
-            $or: [{ userName }, { email }]
-        }
-    )
-    if (existedDetails) {
-        throw new apiError(
-            400,
-            "User Credantials Already Exist"
-        )
-    }
     const user = req.user
-    if (fullName) {
-        user.fullName = fullName
-    }
-    if (email) {
-        user.email = email
-    }
-    if (userName) {
-        user.userName = userName
-    }
-    if (bio) {
-        user.bio = bio
-    }
-    await user.save({
-        validateBeforeSave: true
-    })
-    return res
-        .status(200)
-        .json(
-            new apiResponse(
-                200,
-                user,
-                "User Details Updated Successfully"
+
+    try {
+        if (userName && user.userName !== userName) {
+            const existingUser = await User.findOne({ userName });
+            if (existingUser) {
+                throw new apiError(400, "Username Already Exists");
+            }
+            user.userName = userName;
+        }
+
+        if (email && user.email !== email) {
+            const existingEmail = await User.findOne({ email });
+            if (existingEmail) {
+                throw new apiError(400, "Email Already Exists");
+            }
+            user.email = email;
+        }
+
+        if (fullName) {
+            user.fullName = fullName
+        }
+        if (bio) {
+            user.bio = bio
+        }
+        await user.save({
+            validateBeforeSave: true
+        })
+        return res
+            .status(200)
+            .json(
+                new apiResponse(
+                    200,
+                    user,
+                    "User Details Updated Successfully"
+                )
             )
-        )
+    } catch (error) {
+        if (error instanceof apiError) {
+            return res.status(error.statusCode)
+                .json(new apiResponse(error.statusCode, error.message, error.description))
+        }
+
+    }
 })
 
 
@@ -364,6 +375,7 @@ export {
     changePassword,
     changeProfileImage,
     chnageUserDetails,
+    sendOtp,
     verifyMail,
     getUser
 }
