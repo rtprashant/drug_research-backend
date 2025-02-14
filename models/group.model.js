@@ -1,6 +1,5 @@
 import mongoose ,{Schema} from "mongoose";
 import bcrypt from "bcrypt"
-import jwt from "jsonwebtoken"
 const messageSchema = new Schema ({
     text: {
         type: String,

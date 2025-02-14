@@ -36,13 +36,10 @@ dbConnection()
         console.log(`User ${socket.id} joined group ${groupName}`);
         io.to(groupName).emit("message", `User ${socket.id} joined the group`);
       });
-      // socket.on('message' ,(message)=>{
-      //   io.emit('message',message)
-      //   console.log(message);
-      // })
+    
       socket.on("message", ({ groupName, message ,senderName }) => {
         console.log(`Message received for group ${groupName} via ${senderName}: ${message}`);
-        socket.broadcast.to(groupName).emit("message", {message ,senderName}); // Send message to all users in the group
+        socket.broadcast.to(groupName).emit("message", {message ,senderName}); 
       });
     })
 

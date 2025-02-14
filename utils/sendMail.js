@@ -25,7 +25,7 @@ const sendMail = async (subject , text ,receiverMail , html=null)=>{
             mailOptions.html = html 
         }
         const info = await transporter.sendMail(mailOptions)
-        console.log("Message sent: %s", info);
+        console.log("Message sent: ", info);
     } catch (error) {
         throw new apiError(error.message, 500)  
     }

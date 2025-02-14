@@ -180,7 +180,7 @@ const verifyMail = asyncHandler(async (req, res) => {
     const user = req.user
     const verify = totp.verify({
         token: otp,
-        secret: process.env.OTP_SECRET+  user.email
+        secret: process.env.OTP_SECRET +  user.email
     })
     if (!verify) {
         throw new apiError(401, "Invalid OTP")
